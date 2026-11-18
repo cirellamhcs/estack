@@ -1,14 +1,12 @@
-# Official Omnigent host image + an SSH client that goes through the egress proxy.
-# Built by omnigent-podman.sh (podman build); BASE is the pinned official image.
+# Official Omnigent host image + an SSH client (the official image has none).
+# Built by lib.sh; BASE is the pinned official image.
 ARG BASE
 FROM ${BASE}
 USER root
 RUN apt-get update \
- && apt-get install -y --no-install-recommends openssh-client netcat-openbsd \
+ && apt-get install -y --no-install-recommends openssh-client \
  && rm -rf /var/lib/apt/lists/*
-# Hosts have no direct route out: every SSH connection is tunnelled through Squid
-# (HTTP CONNECT), which only allows public addresses.
-COPY --chmod=644 ssh_config /etc/ssh/ssh_config.d/10-omnigent-egress.conf
+COPY --chmod=644 ssh_config /etc/ssh/ssh_config.d/10-omnigent.conf
 # GitHub's published host keys, so the first git-over-SSH connection is verified.
 RUN curl -fsS https://api.github.com/meta \
   | python3 -c 'import sys,json; [print("github.com", k) for k in json.load(sys.stdin)["ssh_keys"]]' \

@@ -22,7 +22,7 @@ adding the marketplace.
 
 | Plugin | Skills | What it's for |
 |---|---|---|
-| `omnigent` | `omnigent-podman` | Run [Omnigent](https://github.com/omnigent-ai) entirely in rootless Podman under gVisor. One isolated host per project (own folder, own logins, own internal network), internet only via a Squid proxy that refuses your LAN, Tailscale and the machine itself. Ask Claude e.g. "set up Omnigent" or "create a new Omnigent project called foo". |
+| `omnigent` | `omnigent-podman` | Run [Omnigent](https://github.com/omnigent-ai) entirely in rootless Podman under gVisor. One isolated host per project (own folder, own logins, own internal network), internet through a transparent egress router that drops anything to your LAN, Tailscale or the machine itself. No proxy settings inside the hosts. Ask Claude e.g. "set up Omnigent" or "create a new Omnigent project called foo". |
 
 ### omnigent requirements
 

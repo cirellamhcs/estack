@@ -14,8 +14,8 @@
 #   container  omnigent-host-<name>  (shows up as host "<name>" in the web UI)
 #   volume     omnigent-host-<name>-home  (its own Claude/Codex/Omnigent logins)
 #   network    omnigent-p-<name>, internal: only this host, the server and the
-#              egress proxy. Internet (web + SSH) via the proxy; no LAN,
-#              Tailscale, Postgres or other hosts.
+#              egress router (its default gateway). Internet yes, any protocol,
+#              no proxy settings needed; no LAN, Tailscale, Postgres or other hosts.
 #
 # The stack from omnigent-podman.sh must be up.
 set -euo pipefail
@@ -28,18 +28,20 @@ set_names() {
   [[ "$name" =~ ^[a-z0-9][a-z0-9-]{0,30}$ ]] \
     || die "Project name must be lowercase letters, digits and dashes (max 31 chars)"
   ctr="omnigent-host-$name"; vol="$ctr-home"; net="omnigent-p-$name"; dir="$PROJECTS_DIR/$name"
-  host_opts "$net" "$vol"
 }
+
+# Creates/upgrades the project network and sets HOST_OPTS.
+opts() { host_opts "$net" "$vol"; }
 
 need_project() { podman volume exists "$vol" || die "No project '$name' (see: $0 list)"; }
 
 start_host() {
   ensure_host_image
   mkdir -p "$dir"
-  ensure_host_network "$net" --label "$PROJECT_LABEL=$name"
+  opts
   connect_infra "$net"
-  running "$ctr" && return
-  podman rm -f "$ctr" >/dev/null 2>&1 || true
+  running "$ctr" && [[ "$(podman inspect -f '{{.ImageName}}' "$ctr")" == "$HOST_IMAGE" ]] && return
+  podman rm -f -t 10 "$ctr" >/dev/null 2>&1 || true
   podman run -d --name "$ctr" --hostname "$name" --label "$PROJECT_LABEL=$name" "${HOST_OPTS[@]}" \
     --restart unless-stopped \
     -v "$dir:/workspace" -w /workspace \
@@ -49,6 +51,7 @@ start_host() {
 
 signed_in() {
   ensure_host_image
+  opts
   podman run --rm "${HOST_OPTS[@]}" "$HOST_IMAGE" sh -c \
     "grep -qs 'omnigent-server' ~/.omnigent/auth_tokens.json" 2>/dev/null
 }
@@ -60,16 +63,17 @@ do_login() {
       # agents in this project can act as that account. Use a separate, non-admin
       # account per project if they must not reach your other projects.
       podman rm -f -t 5 "$ctr" >/dev/null 2>&1 || true
-      ensure_host_network "$net" --label "$PROJECT_LABEL=$name"
-      connect_infra "$net"
       ensure_host_image
+      opts
+      connect_infra "$net"
       log "Sign in the host for '$name' with an Omnigent account"
       podman run --rm -it "${HOST_OPTS[@]}" "$HOST_IMAGE" omnigent login "$INTERNAL_URL" || true
       start_host
       signed_in && log "Host '$name' signed in and started" \
         || die "Sign-in did not complete; run: $0 login $name"
       ;;
-    claude|codex) cli_login "$vol" "$1" ;;
+    claude) ensure_host_image; opts; podman run --rm -it "${HOST_OPTS[@]}" "$HOST_IMAGE" claude auth login ;;
+    codex)  ensure_host_image; opts; podman run --rm -it "${HOST_OPTS[@]}" "$HOST_IMAGE" codex login --device-auth ;;
     *) die "usage: $0 login <name> [omnigent|claude|codex]" ;;
   esac
 }
@@ -91,7 +95,7 @@ case "$cmd" in
     set_names "${2:-}"; need_project; do_login "${3:-omnigent}"
     ;;
   ssh-key)
-    set_names "${2:-}"; need_project; ensure_host_network "$net" --label "$PROJECT_LABEL=$name"
+    set_names "${2:-}"; need_project; opts
     print_ssh_key "omnigent-$name"
     ;;
   start)

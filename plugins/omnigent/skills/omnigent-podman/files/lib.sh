@@ -2,11 +2,14 @@
 #
 # Networks:
 #   omnigent          server + Postgres (normal network; hosts are never on it)
-#   omnigent-egress   proxy's way out to the internet
-#   host networks     one per host, --internal (no route out). Only that host, the
-#                     server and the egress proxy are on it. Labelled $HOSTNET_LABEL.
-# Hosts reach the internet only through the proxy, which refuses LAN, Tailscale
-# and this machine (see egress/squid.conf). SSH goes through it too (ports 22/443).
+#   omnigent-egress   the egress router's way out to the internet
+#   host networks     one per host, --internal (no way out of their own). Only that
+#                     host, the server (.3) and the egress router (.2) are on it, and
+#                     the network's default route points at the router. Labelled
+#                     $HOSTNET_LABEL, subnets 10.90.N.0/24.
+# The router (egress/) forwards and NATs everything a host sends to the internet,
+# any protocol, and drops anything to private, Tailscale or loopback addresses. It
+# also answers DNS. Nothing inside a host has to know about it.
 
 LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Machine-specific settings (any OMNIGENT_* variable), kept out of the bundled files
@@ -17,12 +20,13 @@ if [[ -f "$LIB_DIR/settings.env" ]]; then set -a; source "$LIB_DIR/settings.env"
 # publishing version tags after v0.2.0. To update, pull :latest and replace the digests.
 SERVER_IMAGE="${OMNIGENT_SERVER_IMAGE:-ghcr.io/omnigent-ai/omnigent-server@sha256:00ab68c8a05301a16137fa8fb2b632328743cb75ec594ad84077761a104e02e0}"
 OFFICIAL_HOST_IMAGE="${OMNIGENT_HOST_IMAGE:-ghcr.io/omnigent-ai/omnigent-host@sha256:28f9f126d2125bbb6ba6b4463d2f81a758badbaf94ff77c4e1bc7d4c8333bca5}"
-# What hosts actually run: the official image plus an SSH client routed through the
-# egress proxy (host-image/). The tag changes whenever the base or those files do.
-HOST_IMAGE="localhost/omnigent-host-ssh:$(cat "$LIB_DIR/host-image/"* <(echo "$OFFICIAL_HOST_IMAGE") | sha256sum | cut -c1-12)"
 PG_IMAGE="docker.io/library/postgres:16-alpine"
-# Squid 6.13 (ubuntu/squid:latest, 2025-11-24)
-EGRESS_IMAGE="${OMNIGENT_EGRESS_IMAGE:-docker.io/ubuntu/squid@sha256:8fafd41d6ddceb295d26eea9938321d825ac5351c7e46cf6a8aa5d093b8ed1ce}"
+# Alpine 3.22.8, base of the egress router image.
+ROUTER_BASE_IMAGE="docker.io/library/alpine@sha256:9db2934886712d877c932e07249c75a59e6ca27adfbccc05261987a17bef2d63"
+# Locally built images; the tag changes whenever their base or files do.
+img_hash() { cat "$LIB_DIR/$1/"* <(echo "$2") | sha256sum | cut -c1-12; }
+HOST_IMAGE="localhost/omnigent-host-ssh:$(img_hash host-image "$OFFICIAL_HOST_IMAGE")"
+EGRESS_IMAGE="localhost/omnigent-egress:$(img_hash egress "$ROUTER_BASE_IMAGE")"
 
 INTERNAL_URL=http://omnigent-server:8000
 NET=omnigent
@@ -34,32 +38,87 @@ RUNTIME=runsc
 # The host image's "sandbox" user; keep-id maps it to your own UID so files in
 # mounted folders stay owned by you.
 SANDBOX_ID=1000660000
-
-PROXY_URL="http://${EGRESS}:3128"
-NO_PROXY_LIST="omnigent-server,localhost,127.0.0.1"
-# Both spellings: curl only reads lowercase http_proxy, some tools only uppercase.
-PROXY_ENV=(-e "HTTPS_PROXY=$PROXY_URL" -e "HTTP_PROXY=$PROXY_URL"
-  -e "https_proxy=$PROXY_URL" -e "http_proxy=$PROXY_URL"
-  -e "NO_PROXY=$NO_PROXY_LIST" -e "no_proxy=$NO_PROXY_LIST")
+# Fixed addresses on every host network.
+ROUTER_OCTET=2
+SERVER_OCTET=3
 
 log() { printf '\033[1m==>\033[0m %s\n' "$*"; }
 die() { echo "$*" >&2; exit 1; }
 running() { [[ "$(podman inspect -f '{{.State.Running}}' "$1" 2>/dev/null)" == "true" ]]; }
 
-# Options for anything that runs as a host's sandbox user.
-#   host_opts <network> <home volume>  -> sets the array HOST_OPTS
-host_opts() {
-  HOST_OPTS=(--runtime="$RUNTIME" --network "$1"
-    --userns "keep-id:uid=${SANDBOX_ID},gid=${SANDBOX_ID}" --user sandbox
-    -e HOME=/home/sandbox -v "$2:/home/sandbox" "${PROXY_ENV[@]}")
+# net_ip <network> <last octet>  ->  e.g. 10.90.4.2
+net_ip() {
+  local sub
+  sub="$(podman network inspect -f '{{range .Subnets}}{{.Subnet}}{{end}}' "$1")" || return 1
+  echo "${sub%.*/*}.$2"
 }
 
-# Build the host image if this version of it doesn't exist yet.
-ensure_host_image() {
-  podman image exists "$HOST_IMAGE" && return
-  log "Building host image $HOST_IMAGE (official image + SSH via egress proxy)"
-  podman build -q -t "$HOST_IMAGE" --build-arg "BASE=$OFFICIAL_HOST_IMAGE" "$LIB_DIR/host-image" >/dev/null
+host_networks() { podman network ls -q --filter "label=$HOSTNET_LABEL"; }
+
+# Create a host network (internal, default route via the router), or replace one
+# made by an older version of these scripts (proxy era: no route). Replacing it
+# removes the host container on it; the next start recreates it from its volume.
+ensure_host_network() {
+  local net="$1" labels=(--label "$HOSTNET_LABEL=1") n c
+  [[ "$net" == omnigent-p-* ]] && labels+=(--label "$PROJECT_LABEL=${net#omnigent-p-}")
+  if podman network exists "$net"; then
+    [[ "$(podman network inspect -f '{{index .Labels "omnigent.routed"}}' "$net")" == 1 ]] && return
+    log "Upgrading network $net to the egress router"
+    for c in $(podman ps -a --filter "network=$net" --format '{{.Names}}'); do
+      case "$c" in
+        omnigent-server|"$EGRESS") podman network disconnect -f "$net" "$c" >/dev/null ;;
+        *) podman rm -f -t 10 "$c" >/dev/null ;;
+      esac
+    done
+    podman network rm "$net" >/dev/null
+  fi
+  local used; used="$(podman network ls --format '{{range .Subnets}}{{.Subnet}} {{end}}' | tr '\n' ' ')"
+  for n in $(seq 1 254); do
+    [[ " $used " == *" 10.90.$n.0/24 "* ]] && continue
+    podman network create --internal --disable-dns --subnet "10.90.$n.0/24" \
+      --route "0.0.0.0/0,10.90.$n.$ROUTER_OCTET" "${labels[@]}" --label omnigent.routed=1 \
+      "$net" >/dev/null
+    return
+  done
+  die "No free 10.90.N.0/24 subnet left"
 }
+
+# Options for anything that runs as a host's sandbox user (creates the network if
+# needed). DNS comes from the router; the server is pinned in /etc/hosts.
+#   host_opts <network> <home volume>  -> sets the array HOST_OPTS
+host_opts() {
+  ensure_host_network "$1"
+  HOST_OPTS=(--runtime="$RUNTIME" --network "$1"
+    --dns "$(net_ip "$1" $ROUTER_OCTET)" --add-host "omnigent-server:$(net_ip "$1" $SERVER_OCTET)"
+    --userns "keep-id:uid=${SANDBOX_ID},gid=${SANDBOX_ID}" --user sandbox
+    -e HOME=/home/sandbox -v "$2:/home/sandbox")
+}
+
+# --network options with the fixed address on each host network.
+#   infra_networks <octet>  -> sets the array INFRA_NETS
+infra_networks() {
+  local n; INFRA_NETS=()
+  for n in $(host_networks); do ensure_host_network "$n"; done  # upgrade old ones first
+  for n in $(host_networks); do INFRA_NETS+=(--network "$n:ip=$(net_ip "$n" "$1")"); done
+}
+
+# Attach server and router to a host network at their fixed addresses.
+connect_infra() {
+  local net="$1" c ip
+  for c in omnigent-server "$EGRESS"; do
+    running "$c" || die "$c is not running; run ./omnigent-podman.sh up"
+    [[ "$c" == "$EGRESS" ]] && ip="$(net_ip "$net" $ROUTER_OCTET)" || ip="$(net_ip "$net" $SERVER_OCTET)"
+    podman inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$c" \
+      | grep -qw -- "$net" || podman network connect --ip "$ip" "$net" "$c"
+  done
+}
+
+build_image() {  # build_image <tag> <dir> <base> <what>
+  podman image exists "$1" && return
+  log "Building $4 image $1"
+  podman build -q -t "$1" --build-arg "BASE=$3" "$LIB_DIR/$2" >/dev/null
+}
+ensure_host_image() { build_image "$HOST_IMAGE" host-image "$OFFICIAL_HOST_IMAGE" host; }
 
 # Create this host's SSH key (once) and print its public key.
 #   print_ssh_key <comment>   (uses HOST_OPTS)
@@ -69,52 +128,21 @@ print_ssh_key() {
     "mkdir -p -m 700 ~/.ssh; test -f ~/.ssh/id_ed25519 || ssh-keygen -q -t ed25519 -N '' -C '$1' -f ~/.ssh/id_ed25519; cat ~/.ssh/id_ed25519.pub"
 }
 
-# Log an agent CLI in (writes its credentials into the home volume).
-#   cli_login <home volume> claude|codex
-# Runs in a one-off container on the egress network (direct internet) instead of
-# the internal host network: Claude Code's OAuth login ignores HTTP(S)_PROXY and
-# fails with "getaddrinfo ENOTFOUND platform.claude.com". Only the CLI's own login
-# runs there, no project code; the host itself stays behind the proxy.
-cli_login() {
-  local vol="$1" tool="$2" saved=("${HOST_OPTS[@]}")
-  ensure_host_image
-  podman network exists "$EGRESS_NET" || podman network create "$EGRESS_NET" >/dev/null
-  host_opts "$EGRESS_NET" "$vol"
-  case "$tool" in
-    claude) podman run --rm -it "${HOST_OPTS[@]}" "$HOST_IMAGE" claude auth login ;;
-    codex)  podman run --rm -it "${HOST_OPTS[@]}" "$HOST_IMAGE" codex login --device-auth ;;
-    *) HOST_OPTS=("${saved[@]}"); die "unknown tool: $tool (claude|codex)" ;;
-  esac
-  HOST_OPTS=("${saved[@]}")
-}
-
-host_networks() { podman network ls -q --filter "label=$HOSTNET_LABEL"; }
-
-# Create an internal host network (extra args: more --label options).
-ensure_host_network() {
-  local net="$1"; shift
-  podman network exists "$net" \
-    || podman network create --internal --label "$HOSTNET_LABEL=1" "$@" "$net" >/dev/null
-}
-
-# Attach server and egress proxy to a host network (no-op if already attached).
-connect_infra() {
-  local net="$1" c
-  for c in omnigent-server "$EGRESS"; do
-    running "$c" || die "$c is not running; run ./omnigent-podman.sh up"
-    podman inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$c" \
-      | grep -qw -- "$net" || podman network connect "$net" "$c"
-  done
-}
-
+# The egress router runs with the normal runtime (crun), not gVisor: it needs the
+# real kernel's netfilter. It runs no agent code, only routes and filters packets.
 start_egress() {
-  running "$EGRESS" && return
-  podman rm -f "$EGRESS" >/dev/null 2>&1 || true
+  if running "$EGRESS"; then
+    [[ "$(podman inspect -f '{{.ImageName}}' "$EGRESS")" == "$EGRESS_IMAGE" ]] && return
+    log "Egress router image changed; replacing it"
+  fi
+  build_image "$EGRESS_IMAGE" egress "$ROUTER_BASE_IMAGE" "egress router"
+  podman rm -f -t 2 "$EGRESS" >/dev/null 2>&1 || true
   podman network exists "$EGRESS_NET" || podman network create "$EGRESS_NET" >/dev/null
-  log "Starting egress proxy (internet only; LAN, Tailscale and this machine refused)"
-  local nets=(--network "$EGRESS_NET") n
-  for n in $(host_networks); do nets+=(--network "$n"); done
-  podman run -d --name "$EGRESS" --runtime="$RUNTIME" "${nets[@]}" --restart unless-stopped \
-    -v "$LIB_DIR/egress/squid.conf:/etc/squid/squid.conf:ro" \
-    "$EGRESS_IMAGE" >/dev/null
+  log "Starting egress router (internet only; LAN, Tailscale and this machine dropped)"
+  infra_networks $ROUTER_OCTET
+  # The egress network must come first: the router uses its first interface's
+  # default route as the way out.
+  podman run -d --name "$EGRESS" --network "$EGRESS_NET" "${INFRA_NETS[@]}" \
+    --cap-add NET_ADMIN,NET_RAW --sysctl net.ipv4.ip_forward=1 \
+    --restart unless-stopped "$EGRESS_IMAGE" >/dev/null
 }

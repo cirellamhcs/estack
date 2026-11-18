@@ -1,0 +1,7 @@
+# Egress router for Omnigent hosts: forwards and NATs their traffic to the
+# internet and drops anything to private addresses. Built by lib.sh.
+ARG BASE
+FROM ${BASE}
+RUN apk add --no-cache nftables dnsmasq iproute2
+COPY --chmod=755 router.sh /router.sh
+CMD ["/router.sh"]

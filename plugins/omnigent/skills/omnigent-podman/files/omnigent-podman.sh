@@ -13,8 +13,9 @@
 #   ./omnigent-podman.sh shell     open a shell in the main host
 #
 # Web UI: http://<this machine>:6767, from the LAN too, with Omnigent's built-in
-# accounts login. Hosts reach the server over their own internal network and the
-# internet only through the egress proxy (no LAN, Tailscale or this machine).
+# accounts login. Each host sits on its own internal network with the server and
+# the egress router, its default gateway: the internet yes, LAN/Tailscale/this
+# machine no, without any proxy settings inside the host.
 # The main host sees only $WORKSPACE; per-project hosts: ./omnigent-project.sh
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
@@ -29,7 +30,7 @@ BASE_URL="${OMNIGENT_BASE_URL:-http://$(hostname -I 2>/dev/null | awk '{print $1
 GRANT_DAYS="${OMNIGENT_GRANT_MAX_LIFETIME_DAYS:-365}"
 MAIN_NET=omnigent-hostnet-main
 MAIN_VOL=omnigent-host-home
-host_opts "$MAIN_NET" "$MAIN_VOL"
+main_opts() { host_opts "$MAIN_NET" "$MAIN_VOL"; }
 
 RUNSC_WRAPPER="$HOME/.local/bin/runsc-rootless"
 CONTAINERS_CONF="${XDG_CONFIG_HOME:-$HOME/.config}/containers/containers.conf"
@@ -126,14 +127,13 @@ start_server() {
   running omnigent-server && return
   podman rm -f omnigent-server >/dev/null 2>&1 || true
   log "Starting Omnigent server on ${BIND}:${PORT} (accounts login, base URL ${BASE_URL})"
-  # Also join every host network, so the hosts can reach the server.
-  local nets=(--network "$NET") n
-  for n in $(host_networks); do nets+=(--network "$n"); done
+  # Also join every host network at its fixed address, so the hosts can reach us.
+  infra_networks $SERVER_OCTET
   # network=host: gVisor uses the container's own netns via the kernel stack instead
   # of netstack, because rootless Podman's port forwarder (-p) can't reach a netstack
   # sandbox. The server runs no agent code; hosts keep netstack.
   podman run -d --name omnigent-server --runtime="$RUNTIME" --runtime-flag=network=host \
-    "${nets[@]}" --restart unless-stopped \
+    --network "$NET" "${INFRA_NETS[@]}" --restart unless-stopped \
     --secret omnigent-database-url,type=env,target=DATABASE_URL \
     -e ARTIFACT_DIR=/data/artifacts \
     -e OMNIGENT_AUTH_ENABLED=1 \
@@ -156,9 +156,11 @@ start_server() {
 
 start_host() {
   ensure_host_image
-  running omnigent-host && return
-  podman rm -f omnigent-host >/dev/null 2>&1 || true
+  main_opts
   connect_infra "$MAIN_NET"
+  running omnigent-host \
+    && [[ "$(podman inspect -f '{{.ImageName}}' omnigent-host)" == "$HOST_IMAGE" ]] && return
+  podman rm -f -t 10 omnigent-host >/dev/null 2>&1 || true
   log "Starting main Omnigent host (sees only $WORKSPACE as /workspace)"
   podman run -d --name omnigent-host --hostname omnigent-host "${HOST_OPTS[@]}" \
     --restart unless-stopped \
@@ -170,6 +172,7 @@ start_host() {
 # Checked in a throwaway container: an unsigned host keeps exiting and restarting.
 host_signed_in() {
   ensure_host_image
+  main_opts
   podman run --rm "${HOST_OPTS[@]}" "$HOST_IMAGE" sh -c \
     "grep -qs 'omnigent-server' ~/.omnigent/auth_tokens.json" 2>/dev/null
 }
@@ -210,6 +213,7 @@ case "$cmd" in
     # would kill a login running inside it. Sign in from a one-off container that
     # shares the host's home volume, then start the host again.
     podman rm -f -t 5 omnigent-host >/dev/null 2>&1 || true
+    ensure_host_image; main_opts
     connect_infra "$MAIN_NET"
     log "Sign in with your Omnigent account (the one you created in the web UI)"
     podman run --rm -it "${HOST_OPTS[@]}" "$HOST_IMAGE" omnigent login "$INTERNAL_URL" || true
@@ -218,10 +222,15 @@ case "$cmd" in
       || die "Sign-in did not complete; run $0 host-login again"
     ;;
   login)
-    cli_login "$MAIN_VOL" "${2:-claude}"
+    ensure_host_image; main_opts
+    case "${2:-claude}" in
+      claude) podman run --rm -it "${HOST_OPTS[@]}" "$HOST_IMAGE" claude auth login ;;
+      codex)  podman run --rm -it "${HOST_OPTS[@]}" "$HOST_IMAGE" codex login --device-auth ;;
+      *) die "usage: $0 login [claude|codex]" ;;
+    esac
     ;;
   ssh-key)
-    print_ssh_key omnigent-host
+    main_opts; print_ssh_key omnigent-host
     ;;
   shell)
     podman exec -it omnigent-host bash

@@ -8,7 +8,7 @@
 4. Run `./omnigent-podman.sh up`. The user opens the printed URL and creates the admin account.
 5. The **user** runs `./omnigent-podman.sh host-login`, then `./omnigent-podman.sh login claude`.
 
-Tested with Podman 5.7.0, runsc release-20261116.0, Omnigent 0.22.0 and Squid 6.13.
+Tested with Podman 5.7.0, runsc release-20261116.0, Omnigent 0.22.0 and Alpine 3.22.8 (nftables, dnsmasq) for the router.
 
 Settings: environment variables, or put them in `settings.env` in the install directory
 (one `NAME=value` per line; never overwritten by updates): `OMNIGENT_PORT` (6767), `OMNIGENT_BIND` (0.0.0.0),
@@ -27,10 +27,11 @@ DNS or Tailscale name), `OMNIGENT_WORKSPACE`, `OMNIGENT_PROJECTS_DIR`,
 | No version tags newer than v0.2.0 on ghcr | upstream only publishes `:latest` | pin `:latest` by digest in `lib.sh` |
 | Host restarts in a loop, no host in the UI | not signed in | `host-login`, which runs in a one-off container with the host stopped |
 | Host signed out after a while | grant lifetime | `OMNIGENT_GRANT_MAX_LIFETIME_DAYS=365` |
-| Claude login: "getaddrinfo ENOTFOUND platform.claude.com" | Claude Code's OAuth login ignores the proxy | `login claude\|codex` runs in a one-off container on the egress network (`cli_login`) |
-| curl ignores the proxy for http:// | curl reads only lowercase `http_proxy` | both spellings set in `PROXY_ENV` |
+| Claude login: "getaddrinfo ENOTFOUND platform.claude.com" | old proxy setup: Claude Code's OAuth login ignores `HTTP(S)_PROXY` | replaced by the transparent egress router; run `up` to upgrade |
 | ssh: "Bad owner or permissions" on its config | COPY kept mode 664 | `COPY --chmod=644` |
-| Host can't reach the server | `NO_PROXY` missing, or server not on the host network | `NO_PROXY=omnigent-server,...`; `connect_infra` in `start` / `up` |
+| No internet, router logs show the wrong egress interface | each host network's default route (via the router) is installed in the router too | `router.sh` deletes self-pointing default routes every 2 s |
+| "Netlink error: No such process" when a host stops | Podman removing the custom route after gVisor took the interface | harmless |
+| Host can't reach the server | server not on the host network, or not at `.3` | `connect_infra` in `start` / `up`; hosts get `--add-host omnigent-server:<.3>` because host networks have no Podman DNS |
 
 bubblewrap works inside gVisor without changes. There is no Podman provider for
 Omnigent "managed hosts" (per-session sandboxes); this setup uses one long-running
@@ -38,9 +39,8 @@ host per project instead.
 
 ## Troubleshooting
 
-- **Refused requests:** `./omnigent-podman.sh logs egress | grep TCP_DENIED`.
-- **Host network check:** `podman exec omnigent-host curl -s -o /dev/null -w '%{http_code}' https://github.com` should print 200; a LAN address should print 403.
-- **SSH to a LAN address:** "Connection closed by UNKNOWN port 65535" means the proxy refused it, as intended.
-- **Proxy rules changed:** run `podman restart omnigent-egress`.
+- **Host network check:** `podman exec omnigent-host curl -s -o /dev/null -m5 -w '%{http_code}' https://github.com` should print 200; a LAN address should time out (dropped).
+- **Router state:** `podman exec omnigent-egress ip -4 route` (one default route, via the egress network) and `podman exec omnigent-egress nft list ruleset`.
+- **Router rules changed:** run `./omnigent-podman.sh up`, which rebuilds and replaces the router.
 - **Files in `host-image/` or the base digest changed:** the image tag changes. Then run `stop` + `start` for each project, and `podman rm -f omnigent-host && ./omnigent-podman.sh up`.
 - **After `rm`:** the host stays listed as offline in the web UI. Delete it there.
