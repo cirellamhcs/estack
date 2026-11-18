@@ -29,6 +29,7 @@ DNS or Tailscale name), `OMNIGENT_WORKSPACE`, `OMNIGENT_PROJECTS_DIR`,
 | Claude login: "getaddrinfo ENOTFOUND platform.claude.com" | old proxy setup: Claude Code's OAuth login ignores `HTTP(S)_PROXY` | replaced by the transparent egress router; run `up` to upgrade |
 | ssh: "Bad owner or permissions" on its config | COPY kept mode 664 | `COPY --chmod=644` |
 | No internet, router logs show the wrong egress interface | each host network's default route (via the router) is installed in the router too | `router.sh` deletes self-pointing default routes every 2 s |
+| Claude in a host: "Auto-update failed: no write permission to npm prefix" | the CLIs are root-owned in the image; hosts run as `sandbox` | `DISABLE_AUTOUPDATER=1` in `host_opts`; CLIs update with the pinned host image |
 | "Netlink error: No such process" when a host stops | Podman removing the custom route after gVisor took the interface | harmless |
 | Host can't reach the server | server not on the host network, or not at `.3` | `connect_infra` in `start` / `up`; hosts get `--add-host omnigent-server:<.3>` because host networks have no Podman DNS |
 

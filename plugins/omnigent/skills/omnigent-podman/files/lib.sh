@@ -97,7 +97,10 @@ host_opts() {
   HOST_OPTS=(--runtime="$RUNTIME" --network "$1"
     --dns "$(net_ip "$1" $ROUTER_OCTET)" --add-host "omnigent-server:$(net_ip "$1" $SERVER_OCTET)"
     --userns "keep-id:uid=${SANDBOX_ID},gid=${SANDBOX_ID}" --user sandbox
-    -e HOME=/home/sandbox -v "$2:/home/sandbox")
+    -e HOME=/home/sandbox -v "$2:/home/sandbox"
+    # The agent CLIs live in the image (root-owned npm prefix) and are updated with
+    # it; their self-updaters would only fail with "no write permission to npm prefix".
+    -e DISABLE_AUTOUPDATER=1)
 }
 
 # --network options with the fixed address on each host network.
