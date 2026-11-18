@@ -1,0 +1,3 @@
+#!/bin/sh
+# On PATH while the omnigent plugin is enabled; runs the bundled script in place.
+exec bash "$(dirname "$(readlink -f "$0")")/../skills/omnigent-podman/files/omnigent-project.sh" "$@"

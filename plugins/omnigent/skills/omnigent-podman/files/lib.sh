@@ -12,9 +12,15 @@
 # also answers DNS. Nothing inside a host has to know about it.
 
 LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# Machine-specific settings (any OMNIGENT_* variable), kept out of the bundled files
-# so updates never overwrite them. Example line: OMNIGENT_EXTRA_ORIGINS=http://myhost.lan:6767
-if [[ -f "$LIB_DIR/settings.env" ]]; then set -a; source "$LIB_DIR/settings.env"; set +a; fi
+# Command names as the user types them (bin/ wrappers on PATH while the plugin is enabled).
+PODMAN_CMD=omnigent-podman
+PROJECT_CMD=omnigent-project
+# Machine-specific settings (any OMNIGENT_* variable, one NAME=value per line), kept
+# outside the plugin so updates never touch them.
+# Example line: OMNIGENT_EXTRA_ORIGINS=http://myhost.lan:6767
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/omnigent-podman"
+SETTINGS_FILE="$CONFIG_DIR/settings.env"
+if [[ -f "$SETTINGS_FILE" ]]; then set -a; source "$SETTINGS_FILE"; set +a; fi
 
 # Omnigent 0.22.0 ("latest" from 2026-11-12), pinned by digest: ghcr.io stopped
 # publishing version tags after v0.2.0. To update, pull :latest and replace the digests.
@@ -106,7 +112,7 @@ infra_networks() {
 connect_infra() {
   local net="$1" c ip
   for c in omnigent-server "$EGRESS"; do
-    running "$c" || die "$c is not running; run ./omnigent-podman.sh up"
+    running "$c" || die "$c is not running; run: $PODMAN_CMD up"
     [[ "$c" == "$EGRESS" ]] && ip="$(net_ip "$net" $ROUTER_OCTET)" || ip="$(net_ip "$net" $SERVER_OCTET)"
     podman inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$c" \
       | grep -qw -- "$net" || podman network connect --ip "$ip" "$net" "$c"

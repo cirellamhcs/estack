@@ -22,11 +22,11 @@ adding the marketplace.
 
 | Plugin | Skills | What it's for |
 |---|---|---|
-| `omnigent` | `omnigent-podman` | Run [Omnigent](https://github.com/omnigent-ai) entirely in rootless Podman under gVisor. One isolated host per project (own folder, own logins, own internal network), internet through a transparent egress router that drops anything to your LAN, Tailscale or the machine itself. No proxy settings inside the hosts. Ask Claude e.g. "set up Omnigent" or "create a new Omnigent project called foo". |
+| `omnigent` | `omnigent-podman` | Run [Omnigent](https://github.com/omnigent-ai) entirely in rootless Podman under gVisor. One isolated host per project (own folder, own logins, own internal network), internet through a transparent egress router that drops anything to your LAN, Tailscale or the machine itself. No proxy settings inside the hosts. Ask Claude e.g. "set up Omnigent" or "create a new Omnigent project called foo", or use the commands `omnigent-podman` and `omnigent-project` it adds. |
 
 ### omnigent requirements
 
-- Ubuntu/Debian with sudo access (the skill's `install-prereqs.sh` installs Podman, passt and gVisor)
+- Ubuntu/Debian with sudo access (`omnigent-podman prereqs` installs Podman, passt and gVisor)
 - A larger subordinate UID range for your user (the setup checks it and prints the command)
 
 ## Adding a plugin to this repo

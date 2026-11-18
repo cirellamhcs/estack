@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
-# Installs Podman and gVisor (runsc) on Ubuntu/Debian. Run with sudo:
-#   sudo bash install-prereqs.sh
+# Installs Podman and gVisor (runsc) on Ubuntu/Debian. Run via: omnigent-podman prereqs
 set -euo pipefail
 
 if [[ $EUID -ne 0 ]]; then
-  echo "Run with sudo: sudo bash $0" >&2
+  echo "Run as root, e.g.: omnigent-podman prereqs" >&2
   exit 1
 fi
 
@@ -23,4 +22,4 @@ apt-get install -y runsc
 echo
 podman --version
 runsc --version | head -1
-echo "Done: Podman and gVisor are installed. Next, as your normal user: ./omnigent-podman.sh setup"
+echo "Done: Podman and gVisor are installed. Next, as your normal user: omnigent-podman setup"

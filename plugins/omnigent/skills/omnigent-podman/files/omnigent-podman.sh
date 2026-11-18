@@ -1,22 +1,24 @@
 #!/usr/bin/env bash
 # Omnigent (server + host) in rootless Podman containers under gVisor.
 #
-#   ./omnigent-podman.sh setup     one-time per-user setup (gVisor runtime, UID check)
-#   ./omnigent-podman.sh up        start everything (idempotent)
-#   ./omnigent-podman.sh down      stop and remove containers (keeps volumes + data)
-#   ./omnigent-podman.sh status    show container state
-#   ./omnigent-podman.sh logs [server|host|postgres|egress]
-#   ./omnigent-podman.sh password  show the admin login, if Omnigent generated one
-#   ./omnigent-podman.sh host-login   sign the main host in to the server (needed once)
-#   ./omnigent-podman.sh login [claude|codex]   log an agent CLI in, inside the main host
-#   ./omnigent-podman.sh ssh-key   show the main host's SSH public key (created once)
-#   ./omnigent-podman.sh shell     open a shell in the main host
+#   omnigent-podman prereqs   install Podman + gVisor (asks for sudo; once per machine)
+#   omnigent-podman setup     one-time per-user setup (gVisor runtime, UID check)
+#   omnigent-podman up        start everything (idempotent)
+#   omnigent-podman down      stop and remove containers (keeps volumes + data)
+#   omnigent-podman status    show container state
+#   omnigent-podman logs [server|host|postgres|egress]
+#   omnigent-podman password  show the admin login, if Omnigent generated one
+#   omnigent-podman host-login   sign the main host in to the server (needed once)
+#   omnigent-podman login [claude|codex]   log an agent CLI in, inside the main host
+#   omnigent-podman ssh-key   show the main host's SSH public key (created once)
+#   omnigent-podman shell     open a shell in the main host
 #
 # Web UI: http://<this machine>:6767, from the LAN too, with Omnigent's built-in
 # accounts login. Each host sits on its own internal network with the server and
 # the egress router, its default gateway: the internet yes, LAN/Tailscale/this
 # machine no, without any proxy settings inside the host.
-# The main host sees only $WORKSPACE; per-project hosts: ./omnigent-project.sh
+# The main host sees only $WORKSPACE; per-project hosts: omnigent-project.
+# Settings: ~/.config/omnigent-podman/settings.env
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
@@ -38,7 +40,7 @@ CONTAINERS_CONF="${XDG_CONFIG_HOME:-$HOME/.config}/containers/containers.conf"
 # Rootless gVisor needs --ignore-cgroups (no systemd cgroup delegation), so Podman
 # gets a small wrapper registered as the runtime "runsc".
 setup_runtime() {
-  command -v runsc >/dev/null || die "runsc not found; first run: sudo bash install-prereqs.sh"
+  command -v runsc >/dev/null || die "runsc not found; first run: $PODMAN_CMD prereqs"
   if [[ ! -x "$RUNSC_WRAPPER" ]]; then
     mkdir -p "$(dirname "$RUNSC_WRAPPER")"
     printf '#!/bin/sh\n# gVisor for rootless Podman: no systemd cgroup delegation, so skip cgroups.\nexec %s --ignore-cgroups "$@"\n' \
@@ -72,7 +74,7 @@ runtime_ready() {
 }
 
 ensure_basics() {
-  runtime_ready || die "gVisor runtime not set up yet; run: $0 setup"
+  runtime_ready || die "gVisor runtime not set up yet; run: $PODMAN_CMD setup"
   podman network exists "$NET" || podman network create "$NET" >/dev/null
   ensure_host_network "$MAIN_NET"
   for v in omnigent-pg omnigent-data "$MAIN_VOL"; do
@@ -151,7 +153,7 @@ start_server() {
     running omnigent-server || break
     sleep 1
   done
-  die "Server did not become healthy; see: $0 logs server"
+  die "Server did not become healthy; see: $PODMAN_CMD logs server"
 }
 
 start_host() {
@@ -179,19 +181,22 @@ host_signed_in() {
 
 cmd="${1:-help}"
 case "$cmd" in
+  prereqs)
+    sudo bash "$LIB_DIR/install-prereqs.sh"
+    ;;
   setup)
     setup_runtime
-    log "Next: $0 up"
+    log "Next: $PODMAN_CMD up"
     ;;
   up)
     ensure_basics; start_postgres; start_server; start_egress; start_host
     # Every project (found by its home volume) gets its host back.
     for p in $(podman volume ls --filter "label=$PROJECT_LABEL" --format "{{index .Labels \"$PROJECT_LABEL\"}}"); do
-      "$LIB_DIR/omnigent-project.sh" start "$p" >/dev/null && log "Started project host '$p'"
+      bash "$LIB_DIR/omnigent-project.sh" start "$p" >/dev/null && log "Started project host '$p'"
     done
     log "Up. Web UI: ${BASE_URL}"
     log "First start? Open it and create the admin account (the first visitor becomes admin)."
-    host_signed_in || log "Main host is not signed in yet; run: $0 host-login"
+    host_signed_in || log "Main host is not signed in yet; run: $PODMAN_CMD host-login"
     ;;
   down)
     podman rm -f -t 10 $(podman ps -a -q --filter "label=$PROJECT_LABEL") \
@@ -219,14 +224,14 @@ case "$cmd" in
     podman run --rm -it "${HOST_OPTS[@]}" "$HOST_IMAGE" omnigent login "$INTERNAL_URL" || true
     start_host
     host_signed_in && log "Host signed in and started" \
-      || die "Sign-in did not complete; run $0 host-login again"
+      || die "Sign-in did not complete; run $PODMAN_CMD host-login again"
     ;;
   login)
     ensure_host_image; main_opts
     case "${2:-claude}" in
       claude) podman run --rm -it "${HOST_OPTS[@]}" "$HOST_IMAGE" claude auth login ;;
       codex)  podman run --rm -it "${HOST_OPTS[@]}" "$HOST_IMAGE" codex login --device-auth ;;
-      *) die "usage: $0 login [claude|codex]" ;;
+      *) die "usage: $PODMAN_CMD login [claude|codex]" ;;
     esac
     ;;
   ssh-key)
@@ -236,6 +241,6 @@ case "$cmd" in
     podman exec -it omnigent-host bash
     ;;
   *)
-    sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,20p' "$LIB_DIR/omnigent-podman.sh" | sed 's/^# \{0,1\}//'
     ;;
 esac

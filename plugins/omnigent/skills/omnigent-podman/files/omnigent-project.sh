@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # One extra Omnigent host per project, each in its own gVisor container.
 #
-#   ./omnigent-project.sh create <name>   new folder + host, then sign it in
-#   ./omnigent-project.sh login <name> [omnigent|claude|codex]   (re)do a sign-in
-#   ./omnigent-project.sh start|stop <name>   (omnigent-podman.sh up starts all again)
-#   ./omnigent-project.sh rm <name>       remove container, network and home volume
+#   omnigent-project create <name>   new folder + host, then sign it in
+#   omnigent-project login <name> [omnigent|claude|codex]   (re)do a sign-in
+#   omnigent-project start|stop <name>   (omnigent-podman.sh up starts all again)
+#   omnigent-project rm <name>       remove container, network and home volume
 #                                         (the project folder is kept)
-#   ./omnigent-project.sh ssh-key <name>  show the host's SSH public key (created once)
-#   ./omnigent-project.sh list
+#   omnigent-project ssh-key <name>  show the host's SSH public key (created once)
+#   omnigent-project list
 #
 # Per project <name>:
 #   folder     $PROJECTS_DIR/<name>  (mounted at /workspace; nothing else from your disk)
@@ -17,7 +17,7 @@
 #              egress router (its default gateway). Internet yes, any protocol,
 #              no proxy settings needed; no LAN, Tailscale, Postgres or other hosts.
 #
-# The stack from omnigent-podman.sh must be up.
+# The stack from omnigent-podman must be up.
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
@@ -33,7 +33,7 @@ set_names() {
 # Creates/upgrades the project network and sets HOST_OPTS.
 opts() { host_opts "$net" "$vol"; }
 
-need_project() { podman volume exists "$vol" || die "No project '$name' (see: $0 list)"; }
+need_project() { podman volume exists "$vol" || die "No project '$name' (see: $PROJECT_CMD list)"; }
 
 start_host() {
   ensure_host_image
@@ -70,11 +70,11 @@ do_login() {
       podman run --rm -it "${HOST_OPTS[@]}" "$HOST_IMAGE" omnigent login "$INTERNAL_URL" || true
       start_host
       signed_in && log "Host '$name' signed in and started" \
-        || die "Sign-in did not complete; run: $0 login $name"
+        || die "Sign-in did not complete; run: $PROJECT_CMD login $name"
       ;;
     claude) ensure_host_image; opts; podman run --rm -it "${HOST_OPTS[@]}" "$HOST_IMAGE" claude auth login ;;
     codex)  ensure_host_image; opts; podman run --rm -it "${HOST_OPTS[@]}" "$HOST_IMAGE" codex login --device-auth ;;
-    *) die "usage: $0 login <name> [omnigent|claude|codex]" ;;
+    *) die "usage: $PROJECT_CMD login <name> [omnigent|claude|codex]" ;;
   esac
 }
 
@@ -124,6 +124,6 @@ case "$cmd" in
       done
     ;;
   *)
-    sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,20p' "$LIB_DIR/omnigent-project.sh" | sed 's/^# \{0,1\}//'
     ;;
 esac

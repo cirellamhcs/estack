@@ -2,16 +2,15 @@
 
 ## Install on a new machine (Ubuntu/Debian)
 
-1. Copy the bundled `files/` to the install directory (see SKILL.md).
-2. The **user** runs `sudo bash install-prereqs.sh`. It installs podman, passt, uidmap and runsc (from the gVisor apt repository).
-3. Run `./omnigent-podman.sh setup`. It creates `~/.local/bin/runsc-rootless`, registers it in `~/.config/containers/containers.conf` and checks the subordinate UID range. If the range is too small, it prints a `sudo usermod --add-subuids ...` command for the **user** to run.
-4. Run `./omnigent-podman.sh up`. The user opens the printed URL and creates the admin account.
-5. The **user** runs `./omnigent-podman.sh host-login`, then `./omnigent-podman.sh login claude`.
+1. The **user** runs `omnigent-podman prereqs`. It installs podman, passt, uidmap and runsc (from the gVisor apt repository) with sudo.
+2. Run `omnigent-podman setup`. It creates `~/.local/bin/runsc-rootless`, registers it in `~/.config/containers/containers.conf` and checks the subordinate UID range. If the range is too small, it prints a `sudo usermod --add-subuids ...` command for the **user** to run.
+3. Run `omnigent-podman up`. The user opens the printed URL and creates the admin account.
+4. The **user** runs `omnigent-podman host-login`, then `omnigent-podman login claude`.
 
 Tested with Podman 5.7.0, runsc release-20261116.0, Omnigent 0.22.0 and Alpine 3.22.8 (nftables, dnsmasq) for the router.
 
-Settings: environment variables, or put them in `settings.env` in the install directory
-(one `NAME=value` per line; never overwritten by updates): `OMNIGENT_PORT` (6767), `OMNIGENT_BIND` (0.0.0.0),
+Settings: environment variables, or `~/.config/omnigent-podman/settings.env`
+(one `NAME=value` per line; outside the plugin, so updates never touch it): `OMNIGENT_PORT` (6767), `OMNIGENT_BIND` (0.0.0.0),
 `OMNIGENT_BASE_URL`, `OMNIGENT_EXTRA_ORIGINS` (comma-separated browser origins, e.g. a
 DNS or Tailscale name), `OMNIGENT_WORKSPACE`, `OMNIGENT_PROJECTS_DIR`,
 `OMNIGENT_GRANT_MAX_LIFETIME_DAYS` (365).
@@ -41,6 +40,6 @@ host per project instead.
 
 - **Host network check:** `podman exec omnigent-host curl -s -o /dev/null -m5 -w '%{http_code}' https://github.com` should print 200; a LAN address should time out (dropped).
 - **Router state:** `podman exec omnigent-egress ip -4 route` (one default route, via the egress network) and `podman exec omnigent-egress nft list ruleset`.
-- **Router rules changed:** run `./omnigent-podman.sh up`, which rebuilds and replaces the router.
-- **Files in `host-image/` or the base digest changed:** the image tag changes. Then run `stop` + `start` for each project, and `podman rm -f omnigent-host && ./omnigent-podman.sh up`.
+- **Router rules changed:** run `omnigent-podman up`, which rebuilds and replaces the router.
+- **Files in `host-image/` or the base digest changed:** the image tag changes. `omnigent-podman up` replaces the hosts that run an old image.
 - **After `rm`:** the host stays listed as offline in the web UI. Delete it there.
