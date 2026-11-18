@@ -1,0 +1,5 @@
+# Omnigent hosts: SSH via the egress proxy (no direct network route exists).
+Host *
+    ProxyCommand nc -X connect -x omnigent-egress:3128 %h %p
+    # Unknown hosts are remembered on first use; github.com is pre-verified.
+    StrictHostKeyChecking accept-new

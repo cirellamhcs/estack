@@ -1,0 +1,12 @@
+{
+  "name": "estack",
+  "description": "Claude Code skills by cirellamhcs",
+  "owner": { "name": "cirellamhcs" },
+  "plugins": [
+    {
+      "name": "omnigent",
+      "source": "./plugins/omnigent",
+      "description": "Run Omnigent in rootless Podman + gVisor with isolated per-project hosts and an egress proxy"
+    }
+  ]
+}

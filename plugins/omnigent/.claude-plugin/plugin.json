@@ -1,0 +1,8 @@
+{
+  "name": "omnigent",
+  "description": "Run Omnigent in rootless Podman + gVisor: isolated per-project hosts, egress proxy that blocks your LAN, SSH via proxy",
+  "author": { "name": "cirellamhcs" },
+  "repository": "https://github.com/cirellamhcs/estack",
+  "license": "MIT",
+  "keywords": ["omnigent", "podman", "gvisor", "sandbox", "agents"]
+}
