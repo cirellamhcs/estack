@@ -9,6 +9,9 @@
 # and this machine (see egress/squid.conf). SSH goes through it too (ports 22/443).
 
 LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Machine-specific settings (any OMNIGENT_* variable), kept out of the bundled files
+# so updates never overwrite them. Example line: OMNIGENT_EXTRA_ORIGINS=http://myhost.lan:6767
+if [[ -f "$LIB_DIR/settings.env" ]]; then set -a; source "$LIB_DIR/settings.env"; set +a; fi
 
 # Omnigent 0.22.0 ("latest" from 2026-11-12), pinned by digest: ghcr.io stopped
 # publishing version tags after v0.2.0. To update, pull :latest and replace the digests.

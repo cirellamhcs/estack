@@ -10,7 +10,8 @@
 
 Tested with Podman 5.7.0, runsc release-20261116.0, Omnigent 0.22.0 and Squid 6.13.
 
-Settings (environment variables): `OMNIGENT_PORT` (6767), `OMNIGENT_BIND` (0.0.0.0),
+Settings: environment variables, or put them in `settings.env` in the install directory
+(one `NAME=value` per line; never overwritten by updates): `OMNIGENT_PORT` (6767), `OMNIGENT_BIND` (0.0.0.0),
 `OMNIGENT_BASE_URL`, `OMNIGENT_EXTRA_ORIGINS` (comma-separated browser origins, e.g. a
 DNS or Tailscale name), `OMNIGENT_WORKSPACE`, `OMNIGENT_PROJECTS_DIR`,
 `OMNIGENT_GRANT_MAX_LIFETIME_DAYS` (365).

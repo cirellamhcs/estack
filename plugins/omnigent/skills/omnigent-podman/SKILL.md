@@ -19,7 +19,9 @@ If neither exists, search: `find ~ -maxdepth 4 -name omnigent-podman.sh -not -pa
 
 - **Found:** run every command below from there. Then check for a newer bundled version:
   `diff -rq "${CLAUDE_PLUGIN_ROOT}/skills/omnigent-podman/files" <dir>`. If it differs, show
-  the user the diff and offer to copy the bundled files over. After copying, restart the
+  the user the diff and offer to copy the bundled files over with
+  `cp -r "${CLAUDE_PLUGIN_ROOT}/skills/omnigent-podman/files/." <dir>/`. `settings.env` (the user's
+  own settings) is not bundled and must be kept. After copying, restart the
   proxy if `egress/` changed: `podman restart omnigent-egress`.
 - **Not found (fresh install):** copy the files to `~/omnigent-podman`, or to a folder the user names:
   `cp -r "${CLAUDE_PLUGIN_ROOT}/skills/omnigent-podman/files" ~/omnigent-podman`.
