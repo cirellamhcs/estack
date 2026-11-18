@@ -3,6 +3,7 @@
 #
 #   omnigent-podman prereqs   install Podman + gVisor (asks for sudo; once per machine)
 #   omnigent-podman setup     one-time per-user setup (gVisor runtime, UID check)
+#   omnigent-podman install-cli   also make both commands work in a normal terminal
 #   omnigent-podman up        start everything (idempotent)
 #   omnigent-podman down      stop and remove containers (keeps volumes + data)
 #   omnigent-podman status    show container state
@@ -67,6 +68,26 @@ setup_runtime() {
     exit 1
   fi
   log "Runtime ready"
+}
+
+# Launchers in ~/.local/bin for use outside Claude Code. They look up the plugin's
+# current install path on every run, so plugin updates never leave them stale.
+install_cli() {
+  local cfg="${CLAUDE_CONFIG_DIR:-$HOME/.claude}" bin="$HOME/.local/bin" c
+  mkdir -p "$bin"
+  for c in "$PODMAN_CMD" "$PROJECT_CMD"; do
+    cat > "$bin/$c" <<LAUNCHER
+#!/bin/sh
+# Installed by "omnigent-podman install-cli": runs the current omnigent plugin version.
+f="\${CLAUDE_CONFIG_DIR:-$cfg}/plugins/installed_plugins.json"
+p=\$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["plugins"]["omnigent@estack"][0]["installPath"])' "\$f" 2>/dev/null) \\
+  || { echo "$c: omnigent plugin not found in \$f" >&2; exit 1; }
+exec "\$p/bin/$c" "\$@"
+LAUNCHER
+    chmod +x "$bin/$c"
+  done
+  log "Installed $PODMAN_CMD and $PROJECT_CMD in $bin"
+  [[ ":$PATH:" == *":$bin:"* ]] || log "Add $bin to your PATH to use them"
 }
 
 runtime_ready() {
@@ -184,6 +205,9 @@ case "$cmd" in
   prereqs)
     sudo bash "$LIB_DIR/install-prereqs.sh"
     ;;
+  install-cli)
+    install_cli
+    ;;
   setup)
     setup_runtime
     log "Next: $PODMAN_CMD up"
@@ -241,6 +265,6 @@ case "$cmd" in
     podman exec -it omnigent-host bash
     ;;
   *)
-    sed -n '2,20p' "$LIB_DIR/omnigent-podman.sh" | sed 's/^# \{0,1\}//'
+    sed -n '2,21p' "$LIB_DIR/omnigent-podman.sh" | sed 's/^# \{0,1\}//'
     ;;
 esac

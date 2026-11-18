@@ -20,6 +20,7 @@ scripts in place from the plugin, so there is nothing to copy or update by hand.
 command isn't found (plugin just installed), use `/reload-plugins`, or call
 `${CLAUDE_PLUGIN_ROOT}/bin/omnigent-podman` directly.
 
+- **Normal terminal:** the commands exist only inside Claude Code. `omnigent-podman install-cli` adds launchers to `~/.local/bin` that always run the current plugin version.
 - **Settings:** `~/.config/omnigent-podman/settings.env` (one `OMNIGENT_*=value` per line, optional).
 - **After a plugin update:** run `omnigent-podman up`. It rebuilds changed images, replaces the router and hosts that run old images, and upgrades old networks. Hosts restart from their volumes, so logins are kept.
 - **Old installs:** an earlier version copied the scripts to a folder (e.g. `~/omnigent-podman`). Move its `settings.env` to `~/.config/omnigent-podman/`, then offer to delete that folder.
