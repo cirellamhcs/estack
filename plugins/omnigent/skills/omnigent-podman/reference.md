@@ -27,6 +27,7 @@ DNS or Tailscale name), `OMNIGENT_WORKSPACE`, `OMNIGENT_PROJECTS_DIR`,
 | No version tags newer than v0.2.0 on ghcr | upstream only publishes `:latest` | pin `:latest` by digest in `lib.sh` |
 | Host restarts in a loop, no host in the UI | not signed in | `host-login`, which runs in a one-off container with the host stopped |
 | Host signed out after a while | grant lifetime | `OMNIGENT_GRANT_MAX_LIFETIME_DAYS=365` |
+| Claude login: "getaddrinfo ENOTFOUND platform.claude.com" | Claude Code's OAuth login ignores the proxy | `login claude\|codex` runs in a one-off container on the egress network (`cli_login`) |
 | curl ignores the proxy for http:// | curl reads only lowercase `http_proxy` | both spellings set in `PROXY_ENV` |
 | ssh: "Bad owner or permissions" on its config | COPY kept mode 664 | `COPY --chmod=644` |
 | Host can't reach the server | `NO_PROXY` missing, or server not on the host network | `NO_PROXY=omnigent-server,...`; `connect_infra` in `start` / `up` |

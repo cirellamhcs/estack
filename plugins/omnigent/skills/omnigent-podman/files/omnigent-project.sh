@@ -69,8 +69,7 @@ do_login() {
       signed_in && log "Host '$name' signed in and started" \
         || die "Sign-in did not complete; run: $0 login $name"
       ;;
-    claude) ensure_host_image; podman run --rm -it "${HOST_OPTS[@]}" "$HOST_IMAGE" claude auth login ;;
-    codex)  ensure_host_image; podman run --rm -it "${HOST_OPTS[@]}" "$HOST_IMAGE" codex login --device-auth ;;
+    claude|codex) cli_login "$vol" "$1" ;;
     *) die "usage: $0 login <name> [omnigent|claude|codex]" ;;
   esac
 }

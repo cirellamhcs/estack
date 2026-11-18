@@ -218,11 +218,7 @@ case "$cmd" in
       || die "Sign-in did not complete; run $0 host-login again"
     ;;
   login)
-    case "${2:-claude}" in
-      claude) podman run --rm -it "${HOST_OPTS[@]}" "$HOST_IMAGE" claude auth login ;;
-      codex)  podman run --rm -it "${HOST_OPTS[@]}" "$HOST_IMAGE" codex login --device-auth ;;
-      *) die "usage: $0 login [claude|codex]" ;;
-    esac
+    cli_login "$MAIN_VOL" "${2:-claude}"
     ;;
   ssh-key)
     print_ssh_key omnigent-host

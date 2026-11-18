@@ -69,6 +69,25 @@ print_ssh_key() {
     "mkdir -p -m 700 ~/.ssh; test -f ~/.ssh/id_ed25519 || ssh-keygen -q -t ed25519 -N '' -C '$1' -f ~/.ssh/id_ed25519; cat ~/.ssh/id_ed25519.pub"
 }
 
+# Log an agent CLI in (writes its credentials into the home volume).
+#   cli_login <home volume> claude|codex
+# Runs in a one-off container on the egress network (direct internet) instead of
+# the internal host network: Claude Code's OAuth login ignores HTTP(S)_PROXY and
+# fails with "getaddrinfo ENOTFOUND platform.claude.com". Only the CLI's own login
+# runs there, no project code; the host itself stays behind the proxy.
+cli_login() {
+  local vol="$1" tool="$2" saved=("${HOST_OPTS[@]}")
+  ensure_host_image
+  podman network exists "$EGRESS_NET" || podman network create "$EGRESS_NET" >/dev/null
+  host_opts "$EGRESS_NET" "$vol"
+  case "$tool" in
+    claude) podman run --rm -it "${HOST_OPTS[@]}" "$HOST_IMAGE" claude auth login ;;
+    codex)  podman run --rm -it "${HOST_OPTS[@]}" "$HOST_IMAGE" codex login --device-auth ;;
+    *) HOST_OPTS=("${saved[@]}"); die "unknown tool: $tool (claude|codex)" ;;
+  esac
+  HOST_OPTS=("${saved[@]}")
+}
+
 host_networks() { podman network ls -q --filter "label=$HOSTNET_LABEL"; }
 
 # Create an internal host network (extra args: more --label options).
