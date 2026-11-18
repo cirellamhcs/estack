@@ -57,6 +57,11 @@ The commands marked **User** need a terminal. Give the user a line to type thems
 `! omnigent-project create <name>`. The same goes for `omnigent-podman prereqs` (sudo).
 
 Folders: the main host uses `~/omnigent-workspace`, and projects use `~/omnigent-projects/<name>`. Both are mounted at `/workspace`.
+**Sessions must be started in `/workspace`.** Without a folder chosen in the web UI, Omnigent
+uses the host's home (`/home/sandbox`, i.e. the logins volume), so files written there don't
+appear in the project folder. Tell the user to pick `/workspace` as the session folder. Don't
+make the project folder the host's home: that would put credentials and dotfiles next to the
+project files.
 Web UI: `up` prints the URL, which is this machine's first IP on port 6767. The login uses Omnigent's own accounts, and the first visitor creates the admin account.
 
 ## Isolation: say this when relevant

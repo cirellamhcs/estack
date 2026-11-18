@@ -30,6 +30,7 @@ DNS or Tailscale name), `OMNIGENT_WORKSPACE`, `OMNIGENT_PROJECTS_DIR`,
 | ssh: "Bad owner or permissions" on its config | COPY kept mode 664 | `COPY --chmod=644` |
 | No internet, router logs show the wrong egress interface | each host network's default route (via the router) is installed in the router too | `router.sh` deletes self-pointing default routes every 2 s |
 | Claude in a host: "Auto-update failed: no write permission to npm prefix" | the CLIs are root-owned in the image; hosts run as `sandbox` | `DISABLE_AUTOUPDATER=1` in `host_opts`; CLIs update with the pinned host image |
+| A file the agent created is missing from the project folder | the session ran in the default workspace `~` = `/home/sandbox` (home volume), not `/workspace` | start sessions with folder `/workspace`; find stray files with `podman exec <host> find /home/sandbox -newer /etc/hostname -type f -not -path "*/.*"` |
 | "Netlink error: No such process" when a host stops | Podman removing the custom route after gVisor took the interface | harmless |
 | Host can't reach the server | server not on the host network, or not at `.3` | `connect_infra` in `start` / `up`; hosts get `--add-host omnigent-server:<.3>` because host networks have no Podman DNS |
 

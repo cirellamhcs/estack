@@ -89,7 +89,8 @@ case "$cmd" in
     do_login omnigent
     read -rp "Log Claude Code in for this project now? [Y/n] " a
     [[ "${a,,}" == n* ]] || do_login claude
-    log "Done. In the web UI pick host '$name'; its files are in $dir"
+    log "Done. In the web UI pick host '$name' and folder /workspace (= $dir)."
+    log "Without a folder, sessions run in the host's home and files won't show up in $dir."
     ;;
   login)
     set_names "${2:-}"; need_project; do_login "${3:-omnigent}"
