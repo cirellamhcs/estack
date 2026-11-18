@@ -73,7 +73,7 @@ ensure_host_network() {
     for c in $(podman ps -a --filter "network=$net" --format '{{.Names}}'); do
       case "$c" in
         omnigent-server|"$EGRESS") podman network disconnect -f "$net" "$c" >/dev/null ;;
-        *) podman rm -f -t 10 "$c" >/dev/null ;;
+        *) podman rm -f -t 10 "$c" >/dev/null 2>&1 || true ;;  # gVisor hosts report a harmless netlink error
       esac
     done
     podman network rm "$net" >/dev/null
