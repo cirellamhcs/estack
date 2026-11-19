@@ -1,14 +1,14 @@
 ---
 name: review-assigned-prs
 description: Use when asked to review, check, approve or re-check the Azure DevOps pull requests assigned to the user as reviewer ("review my PRs", "check my assigned PRs", "re-check PR 14501", /review-assigned-prs), including loop ticks that re-check PRs waiting on their author.
-argument-hint: "[pr-id ...] [--dry-run]"
+argument-hint: "[pr-id ...] [--dry-run] [--every <minutes>]"
 ---
 
 # Review Assigned PRs (Azure DevOps)
 
 One pass = triage every active PR where I am a reviewer, deep-review the ones that need it, post the verdict, and keep PRs that are waiting for the author under watch. The pass is idempotent: all state lives in Azure DevOps (my vote, my threads, the `Reviewed <sha>` marker), never in local files.
 
-Arguments: PR ids restrict the pass to those PRs. `--dry-run` does everything except posting and starting the loop (print what would be posted instead).
+Arguments: PR ids restrict the pass to those PRs. `--dry-run` does everything except posting and starting the loop (print what would be posted instead). `--every <minutes>` sets the re-check interval for this watch (section 5).
 
 Scripts live in `${CLAUDE_SKILL_DIR}/scripts/`; every Azure DevOps read and write goes through them with the user's PAT. They find the organization and token themselves. If they say "Not signed in" or the token is rejected, stop and give the user this line to run in their own terminal (it prompts for the token, so never run it yourself): `ado-pr-review login`. `ado-pr-review status` checks the sign-in without showing the token. Never print, read, copy or persist the token. Checkouts persist in `${CLAUDE_PROJECT_DIR}/repos/<repo>` (override with `REVIEW_REPOS_DIR`); each checkout resets and cleans the tree. The checkout is for reading code only: never build, restore, install or run tests. The PR's build pipeline does that, and `pr-state.sh` reports its result as `builds`.
 
@@ -76,13 +76,15 @@ Approving may complete the PR immediately when the author set auto-complete; `pr
 
 ## 5. Wait and re-check
 
-After posting, list PRs in `waiting-for-author`, `changed-since-review` not yet handled, or just voted `WaitingForAuthor`. If that list is not empty and this run is not already a `/loop` tick, start the watch:
+Interval: `--every <minutes>` if given, otherwise the plugin setting `${user_config.loop_minutes}` minutes (changeable in `/config`; if that value is not a number, use 30). Clamp to 1–60.
+
+After posting, list PRs in `waiting-for-author`, `changed-since-review` not yet handled, or just voted `waiting-for-author`. If that list is not empty and this run is not already a `/loop` tick, start the watch, passing on the same arguments (PR ids, `--every`) so every tick sees them:
 
 ```
-/loop /review-assigned-prs
+/loop /ado-pr-review:review-assigned-prs [same arguments]
 ```
 
-Inside the loop, pace with 30 min between ticks while something is pending, and stop the loop (ScheduleWakeup `stop: true`) when nothing is pending. Each tick is a normal pass of this skill.
+Inside the loop, schedule the next tick after the interval (ScheduleWakeup `delaySeconds` = minutes × 60) while something is pending, and stop the loop (ScheduleWakeup `stop: true`) when nothing is pending. Each tick is a normal pass of this skill.
 
 ## 6. Report
 

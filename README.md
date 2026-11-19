@@ -34,6 +34,7 @@ adding the marketplace.
 ### ado-pr-review requirements
 
 - A personal access token with the scopes Code (Read & write) and Work Items (Read). Sign in once in a terminal with `ado-pr-review login`: it asks for the organization and the token, checks them, and stores the token in the system keyring (`secret-tool`) or, without one, in `~/.config/ado-pr-review/pat` (mode 0600). `ado-pr-review status` checks it; `ado-pr-review logout` removes it.
+- While PRs wait for their author it re-checks on a `/loop`, every 30 minutes by default. Change it in `/config` (plugin setting "Re-check interval") or per run with `--every <minutes>` (1–60).
 - The command exists only inside Claude Code; `ado-pr-review install-cli` adds it to `~/.local/bin` for a normal terminal.
 - `git`, `curl`, `python3`; whatever the reviewed repos need to build (e.g. .NET SDK, Node)
 - Checkouts go to `<project dir>/repos` (override with `REVIEW_REPOS_DIR`)

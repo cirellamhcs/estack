@@ -1,8 +1,24 @@
 {
   "name": "ado-pr-review",
   "description": "Review the Azure DevOps pull requests assigned to you: triage, deep review with build and tests, inline threads, vote, and re-check while waiting for the author",
-  "author": { "name": "cirellamhcs" },
+  "author": {
+    "name": "cirellamhcs"
+  },
   "repository": "https://github.com/cirellamhcs/estack",
   "license": "MIT",
-  "keywords": ["azure-devops", "pull-requests", "code-review"]
+  "keywords": [
+    "azure-devops",
+    "pull-requests",
+    "code-review"
+  ],
+  "userConfig": {
+    "loop_minutes": {
+      "type": "number",
+      "title": "Re-check interval (minutes)",
+      "description": "How long to wait between re-checks while PRs are waiting for their author (1-60). Override per run with --every <minutes>.",
+      "default": 30,
+      "min": 1,
+      "max": 60
+    }
+  }
 }
