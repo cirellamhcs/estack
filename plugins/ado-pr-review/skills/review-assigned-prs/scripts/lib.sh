@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 # Shared helpers (sourced). Nothing here ever prints the token.
 #
-# Token, first match wins:
-#   1. $AZDO_PAT_B64 = base64(":<pat>")           (environment, e.g. CI)
-#   2. system keyring via secret-tool               (written by "ado-pr-review login")
-#   3. $CONFIG_DIR/pat, mode 0600                   (written by "ado-pr-review login")
+# Token, written by "ado-pr-review login", first match wins:
+#   1. system keyring via secret-tool
+#   2. $CONFIG_DIR/pat, mode 0600
 # Sourcing with ADO_NO_AUTH=1 skips the token and org checks (used by login itself).
 set -euo pipefail
 CLI=ado-pr-review
@@ -24,7 +23,6 @@ have_keyring() { command -v secret-tool >/dev/null 2>&1; }
 
 # Prints base64(":<pat>") from the first source that has a token, or fails.
 auth_b64() {
-  if [[ -n "${AZDO_PAT_B64:-}" ]]; then printf %s "$AZDO_PAT_B64"; return; fi
   local pat=""
   have_keyring && pat="$(secret-tool lookup "${KEYRING_ATTRS[@]}" 2>/dev/null || true)"
   [[ -z "$pat" && -r "$TOKEN_FILE" ]] && pat="$(<"$TOKEN_FILE")"

@@ -49,13 +49,11 @@ EOF
   fi
   set_org "$org"
   echo "Signed in to $org as $name. Token stored in $where."
-  [[ -z "${AZDO_PAT_B64:-}" ]] || echo "Note: AZDO_PAT_B64 is set in your environment and takes priority; remove it to use the stored token."
 }
 
 status() {
   local src auth
-  if [[ -n "${AZDO_PAT_B64:-}" ]]; then src="environment (AZDO_PAT_B64)"
-  elif have_keyring && [[ -n "$(secret-tool lookup "${KEYRING_ATTRS[@]}" 2>/dev/null)" ]]; then src="system keyring"
+  if have_keyring && [[ -n "$(secret-tool lookup "${KEYRING_ATTRS[@]}" 2>/dev/null)" ]]; then src="system keyring"
   elif [[ -r "$TOKEN_FILE" ]]; then src="$TOKEN_FILE"
   else echo "Not signed in. Run in a terminal: $CLI login"; exit 1; fi
   echo "Organization: ${AZDO_ORG:-(not set)}"
