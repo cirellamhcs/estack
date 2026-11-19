@@ -9,6 +9,7 @@ In Claude Code:
 ```
 /plugin marketplace add cirellamhcs/estack
 /plugin install omnigent@estack
+/plugin install ado-pr-review@estack
 ```
 
 To get updates automatically, open `/plugin`, go to **Marketplaces**, select
@@ -23,11 +24,20 @@ adding the marketplace.
 | Plugin | Skills | What it's for |
 |---|---|---|
 | `omnigent` | `omnigent-podman` | Run [Omnigent](https://github.com/omnigent-ai) entirely in rootless Podman under gVisor. One isolated host per project (own folder, own logins, own internal network), internet through a transparent egress router that drops anything to your LAN, Tailscale or the machine itself. No proxy settings inside the hosts. Ask Claude e.g. "set up Omnigent" or "create a new Omnigent project called foo", or use the commands `omnigent-podman` and `omnigent-project` it adds. |
+| `ado-pr-review` | `review-assigned-prs` | Review the Azure DevOps pull requests where you are a reviewer: triage, check out each PR, build and run its tests, post inline findings and a summary, vote, and re-check on a `/loop` while waiting for the author. All state lives in Azure DevOps. Say "review my PRs" or run `/review-assigned-prs [pr-id ...] [--dry-run]`. |
 
 ### omnigent requirements
 
 - Ubuntu/Debian with sudo access (`omnigent-podman prereqs` installs Podman, passt and gVisor)
 - A larger subordinate UID range for your user (the setup checks it and prints the command)
+
+### ado-pr-review requirements
+
+- `AZDO_PAT_B64` in the environment: base64 of `:<personal access token>` (Code read/write, Work items read)
+- `AZDO_ORG=<organization>` in `~/.config/ado-pr-review/settings.env` (or the environment)
+- The `azure-devops` MCP server, used for posting threads and votes
+- `git`, `curl`, `python3`; whatever the reviewed repos need to build (e.g. .NET SDK, Node)
+- Checkouts go to `<project dir>/repos` (override with `REVIEW_REPOS_DIR`)
 
 ## Adding a plugin to this repo
 

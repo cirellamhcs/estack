@@ -1,12 +1,19 @@
 {
   "name": "estack",
   "description": "Claude Code skills by cirellamhcs",
-  "owner": { "name": "cirellamhcs" },
+  "owner": {
+    "name": "cirellamhcs"
+  },
   "plugins": [
     {
       "name": "omnigent",
       "source": "./plugins/omnigent",
       "description": "Run Omnigent in rootless Podman + gVisor with isolated per-project hosts and a transparent egress router"
+    },
+    {
+      "name": "ado-pr-review",
+      "source": "./plugins/ado-pr-review",
+      "description": "Review the Azure DevOps pull requests assigned to you, post findings and votes, and re-check until the author is done"
     }
   ]
 }
