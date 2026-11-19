@@ -1,0 +1,3 @@
+#!/bin/sh
+# On PATH while the ado-pr-review plugin is enabled; runs the bundled script in place.
+exec bash "$(dirname "$(readlink -f "$0")")/../skills/review-assigned-prs/scripts/ado-pr-review.sh" "$@"

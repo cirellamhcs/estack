@@ -10,7 +10,7 @@ One pass = triage every active PR where I am a reviewer, deep-review the ones th
 
 Arguments: PR ids restrict the pass to those PRs. `--dry-run` does everything except posting and starting the loop (print what would be posted instead).
 
-Scripts live in `${CLAUDE_SKILL_DIR}/scripts/` and read the PAT from `$AZDO_PAT_B64` (base64 of `:<pat>`). Never print, copy or persist that value. The organization comes from `$AZDO_ORG` or `~/.config/ado-pr-review/settings.env` (`AZDO_ORG=<org>`). Posting and voting use the `azure-devops` MCP server (`mcp__azure-devops__*`). If any of these is missing, the scripts say so: tell the user what to set and stop. Checkouts persist in `${CLAUDE_PROJECT_DIR}/repos/<repo>` (override with `REVIEW_REPOS_DIR`); each checkout resets and cleans the tree, so building and running tools there is expected.
+Scripts live in `${CLAUDE_SKILL_DIR}/scripts/`; every Azure DevOps read and write goes through them with the user's PAT. They find the organization and token themselves. If they say "Not signed in" or the token is rejected, stop and give the user this line to run in their own terminal (it prompts for the token, so never run it yourself): `ado-pr-review login`. `ado-pr-review status` checks the sign-in without showing the token. Never print, read, copy or persist the token. Checkouts persist in `${CLAUDE_PROJECT_DIR}/repos/<repo>` (override with `REVIEW_REPOS_DIR`); each checkout resets and cleans the tree, so building and running tools there is expected.
 
 ## 1. Triage
 
@@ -55,20 +55,22 @@ bash ${CLAUDE_SKILL_DIR}/scripts/checkout-pr.sh <prId> <myReviewedHead>   # adds
 ```
 
 - `rebasedSincePrev: true` → treat as a full review of `fullDiff`; otherwise review `deltaDiff` for new issues and read `myInlineThreads`.
-- For every thread of mine: if the delta fixes it → reply `Fixed in <short-sha>.` and set status `Fixed`. If the author replied and the argument holds → reply briefly and set `ByDesign` or `Closed`. If it is not fixed → reply what is still missing, keep `Active`.
+- For every thread of mine (`pr-write.sh reply <prId> <threadId> <<<'text'`, then `pr-write.sh status <prId> <threadId> fixed|byDesign|closed`): if the delta fixes it → reply `Fixed in <short-sha>.` and set status `fixed`. If the author replied and the argument holds → reply briefly and set `ByDesign` or `Closed`. If it is not fixed → reply what is still missing, keep `Active`.
 - Threads I never opened are not mine to resolve. `openedByBot: true` marks Copilot/system threads; mention them in the summary only when the diff addresses or ignores them.
 
 ## 4. Post (skip when `--dry-run`)
 
 Order matters, because the summary marker is what the next pass reads:
 
-1. Inline threads with `mcp__azure-devops__repo_pull_request_thread_write` `create` (`filePath`, `rightFileStartLine`, status `Active`). Minor findings start with `nit:`. One thread per finding; do not repeat a point another reviewer already has open.
-2. Summary thread, status `Closed`, first line exactly `Reviewed <head-sha> (<verdict>).` (see `templates.md`). It states what was verified with numbers, and lists critical findings by file.
-3. Vote with `mcp__azure-devops__repo_pull_request_write` `vote`:
-   - no findings → `Approved`
-   - only minor → `ApprovedWithSuggestions`
-   - any critical → `WaitingForAuthor`
-   Never `Rejected`, never change the PR (title, description, auto-complete, reviewers, abandon).
+All writes go through `pr-write.sh`; comment text comes on stdin (use a quoted heredoc, `<<'EOF'`, so backticks and `$` survive):
+
+1. Inline threads, one per finding: `bash ${CLAUDE_SKILL_DIR}/scripts/pr-write.sh thread <prId> --file <path> --line <n> <<'EOF'` … `EOF` (status `active`; `line` is the right side, new file). Minor findings start with `nit:`. Do not repeat a point another reviewer already has open.
+2. Summary thread: `bash ${CLAUDE_SKILL_DIR}/scripts/pr-write.sh thread <prId> --status closed <<'EOF'` … `EOF`, first line exactly `Reviewed <head-sha> (<verdict>).` (see `templates.md`). It states what was verified with numbers, and lists critical findings by file.
+3. Vote: `bash ${CLAUDE_SKILL_DIR}/scripts/pr-write.sh vote <prId> <vote>`:
+   - no findings → `approved`
+   - only minor → `approved-with-suggestions`
+   - any critical → `waiting-for-author`
+   Never reject, never change the PR (title, description, auto-complete, reviewers, abandon); the script offers none of that.
 
 Approving may complete the PR immediately when the author set auto-complete; `pr-state.sh` shows `autoComplete`. That is intended.
 
@@ -88,7 +90,7 @@ End with a table: PR id, repository, state before, action taken, vote. Then one 
 
 ## Common mistakes
 
-- Reviewing from the MCP `includeChangedFiles` list alone: it has no diff. Always `checkout-pr.sh`.
+- Reviewing from a changed-files list alone: it has no diff. Always `checkout-pr.sh`.
 - Trusting the PR description's test numbers: run the suites yourself and state what you ran. A test command that prints no pass/fail summary did not run, whatever its exit code.
 - Blocking on minor findings: minor never changes the vote.
 - Posting the summary before the inline threads, or without the `Reviewed <sha>` first line: the next pass will re-review from scratch.

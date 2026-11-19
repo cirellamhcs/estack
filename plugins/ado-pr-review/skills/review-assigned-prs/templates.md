@@ -6,7 +6,7 @@ Fill the placeholders from `pr-state.sh` and `checkout-pr.sh` output (`descripti
 
 ```
 You are reviewing Azure DevOps PR <prId> "<title>" in <repository> (project "<project>") as a senior engineer.
-STRICTLY READ-ONLY on Azure DevOps: never call any mcp__azure-devops__*_write tool, never vote, never comment. Local commands only inside <repoDir>.
+STRICTLY READ-ONLY on Azure DevOps: never run pr-write.sh, never vote, never comment. You may run workitem.sh and pr-state.sh from <skillDir>/scripts. Local commands only inside <repoDir>.
 
 Checked-out head: <head> (detached) in <repoDir>. Full diff: <fullDiff>. <If delta: Delta since my last review: <deltaDiff>; my open threads: <myInlineThreads JSON>.>
 PR description (verify every claim you can):
@@ -43,6 +43,6 @@ Re-check variant, first line `Reviewed <short-sha> (<verdict>) after <n> new com
 
 ## Thread replies on re-check
 
-- fixed: `Fixed in <short-sha>.` then status `Fixed`
-- accepted argument: `Agreed, <one-line reason>.` then status `ByDesign` (or `Closed` for nits)
-- not fixed: `Still open: <what is missing>.` keep `Active`
+- fixed: `Fixed in <short-sha>.` then status `fixed`
+- accepted argument: `Agreed, <one-line reason>.` then status `byDesign` (or `closed` for nits)
+- not fixed: `Still open: <what is missing>.` keep `active`

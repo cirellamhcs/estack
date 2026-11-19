@@ -3,7 +3,7 @@
 Work in `repoDir` at the PR head (detached). `fullDiff` is merge-base...head. Read the whole diff first, then the surrounding code of every changed function, then run things.
 
 ## Intent
-- Read the linked work item (`mcp__azure-devops__wit_work_item get`) and the PR description. Does the diff do what the work item asks, nothing less, nothing unrelated?
+- Read the linked work items (`bash <skillDir>/scripts/workitem.sh <id> ...`) and the PR description. Does the diff do what the work item asks, nothing less, nothing unrelated?
 - Every claim in the description is a hypothesis: contract unchanged, tests passing, no model change, "only caller is X". Verify each one you can; list the ones you could not.
 
 ## Correctness (critical when wrong)
@@ -26,7 +26,7 @@ Work in `repoDir` at the PR head (detached). `fullDiff` is merge-base...head. Re
 - Description or commit text that does not match the code (state the correct behaviour).
 
 ## Other reviewers
-- Read existing threads (`repo_pull_request_thread list`). Do not duplicate an open point; if the diff already addresses a Copilot or human finding, note it in the summary instead of opening a new thread.
+- Read existing threads (`otherOpenThreads` from `pr-state.sh`). Do not duplicate an open point; if the diff already addresses a Copilot or human finding, note it in the summary instead of opening a new thread.
 
 ## Output contract (what the subagent returns)
 ```json
