@@ -17,9 +17,9 @@ ITR=$(api GET "$proj/_apis/git/repositories/$repo/pullRequests/$pr/iterations")
 PROJID=$(printf '%s' "$PRJ" | python3 -I -c 'import json,sys; print(json.load(sys.stdin)["repository"]["project"]["id"])')
 POL=$(api GET "$proj/_apis/policy/evaluations?artifactId=vstfs:///CodeReview/CodeReviewId/$PROJID/$pr&api-version=7.1-preview.1" 2>/dev/null || echo '{"value":[]}')
 D=$(mktemp -d); trap 'rm -rf "$D"' EXIT; printf %s "$PRJ" >"$D/prj"; printf %s "$THR" >"$D/thr"; printf %s "$ITR" >"$D/itr"; printf %s "$POL" >"$D/pol"
-python3 -I - "$ME" "$D" <<'PY'
+python3 -I - "$ME" "$D" "$BASE_URL" <<'PY'
 import json,sys,re
-me=sys.argv[1]; prj,thr,itr,pol=(json.load(open(sys.argv[2]+"/"+n)) for n in ("prj","thr","itr","pol"))
+me=sys.argv[1]; base_url=sys.argv[3]; prj,thr,itr,pol=(json.load(open(sys.argv[2]+"/"+n)) for n in ("prj","thr","itr","pol"))
 head=prj["lastMergeSourceCommit"]["commitId"]; base=prj["lastMergeTargetCommit"]["commitId"]
 myvote=next((r["vote"] for r in prj.get("reviewers",[]) if r["id"]==me),None)
 threads=[t for t in thr["value"] if not t.get("isDeleted")]
@@ -43,6 +43,19 @@ my_inline=[summarize(t) for t in mine if (t.get("threadContext") or {}).get("fil
 open_mine=[t for t in my_inline if t["status"] in ("active","pending")]
 replied=[t for t in my_inline if not t["lastAuthorIsMe"]]
 resolved_by_other=[t for t in my_inline if t["status"] in ("fixed","closed","wontFix","byDesign") and not t["lastAuthorIsMe"]]
+# Build validation (the pipeline runs build and tests; this skill only reads the result).
+builds=[]
+for e in pol.get("value",[]):
+    c=e["configuration"]
+    if c["type"]["displayName"]!="Build": continue
+    x=e.get("context") or {}; prev=(x.get("buildOutputPreview") or {})
+    builds.append({"pipeline":x.get("buildDefinitionName") or c.get("settings",{}).get("displayName"),
+        "status":e.get("status"),"blocking":c.get("isBlocking"),
+        "ranOnHead":x.get("lastMergeSourceCommitId")==head,
+        "targetMovedSince":bool(x.get("buildIsNotCurrent")),
+        "expired":bool(x.get("isExpired")),
+        "url":f'{base_url}/{prj["repository"]["project"]["name"].replace(" ","%20")}/_build/results?buildId={x["buildId"]}' if x.get("buildId") else None,
+        "errors":[m.get("message","")[:300] for m in (prev.get("errors") or [])][:10]})
 others_open=[summarize(t) for t in threads if text(t) and text(t)[0]["author"]["id"]!=me and (t.get("threadContext") or {}).get("filePath") and t.get("status") in ("active","pending")]
 if prj.get("isDraft"): state="skip-draft"
 elif prj["createdBy"]["id"]==me: state="skip-own"
@@ -64,6 +77,7 @@ print(json.dumps({
  "iterations":len(itr["value"]),"lastPush":itr["value"][-1]["createdDate"] if itr["value"] else None,
  "me":me,"myVote":myvote,"myReviewedHead":reviewed,"myReviewedAt":reviewed_at or None,
  "myInlineThreads":my_inline,"otherOpenThreads":others_open,
- "policies":sorted({(e["configuration"]["type"]["displayName"],e.get("status")) for e in pol.get("value",[])}),
+ "policies":sorted({(e["configuration"]["type"]["displayName"],e.get("status")) for e in pol.get("value",[]) if e["configuration"]["type"]["displayName"]!="Build"}),
+ "builds":builds,
  "state":state},indent=1))
 PY

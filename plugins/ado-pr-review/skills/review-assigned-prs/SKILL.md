@@ -10,7 +10,7 @@ One pass = triage every active PR where I am a reviewer, deep-review the ones th
 
 Arguments: PR ids restrict the pass to those PRs. `--dry-run` does everything except posting and starting the loop (print what would be posted instead).
 
-Scripts live in `${CLAUDE_SKILL_DIR}/scripts/`; every Azure DevOps read and write goes through them with the user's PAT. They find the organization and token themselves. If they say "Not signed in" or the token is rejected, stop and give the user this line to run in their own terminal (it prompts for the token, so never run it yourself): `ado-pr-review login`. `ado-pr-review status` checks the sign-in without showing the token. Never print, read, copy or persist the token. Checkouts persist in `${CLAUDE_PROJECT_DIR}/repos/<repo>` (override with `REVIEW_REPOS_DIR`); each checkout resets and cleans the tree, so building and running tools there is expected.
+Scripts live in `${CLAUDE_SKILL_DIR}/scripts/`; every Azure DevOps read and write goes through them with the user's PAT. They find the organization and token themselves. If they say "Not signed in" or the token is rejected, stop and give the user this line to run in their own terminal (it prompts for the token, so never run it yourself): `ado-pr-review login`. `ado-pr-review status` checks the sign-in without showing the token. Never print, read, copy or persist the token. Checkouts persist in `${CLAUDE_PROJECT_DIR}/repos/<repo>` (override with `REVIEW_REPOS_DIR`); each checkout resets and cleans the tree. The checkout is for reading code only: never build, restore, install or run tests. The PR's build pipeline does that, and `pr-state.sh` reports its result as `builds`.
 
 ## 1. Triage
 
@@ -38,13 +38,13 @@ Checkout the PR and diff locally, then review against `review-checklist.md` (in 
 bash ${CLAUDE_SKILL_DIR}/scripts/checkout-pr.sh <prId>   # -> repoDir, fullDiff, mergeBase, head
 ```
 
-Dispatch one subagent per PR (general-purpose) with the prompt in `templates.md` → "Review subagent prompt". It reads code and runs builds/tests in `repoDir`; it never writes to Azure DevOps. It returns the JSON from the checklist's output contract: findings with `severity: critical|minor`, `file`, `line`, `comment`, plus what was verified and not verified, with numbers. If the Agent tool is unavailable (this skill is itself running inside a subagent), do the checklist inline instead.
+Dispatch one subagent per PR (general-purpose) with the prompt in `templates.md` → "Review subagent prompt". It reads code in `repoDir` (no builds, no tests); it never writes to Azure DevOps. It returns the JSON from the checklist's output contract: findings with `severity: critical|minor`, `file`, `line`, `comment`, plus what was verified and not verified, with numbers. If the Agent tool is unavailable (this skill is itself running inside a subagent), do the checklist inline instead.
 
 Superproject or docs-only PR (the diff touches submodule pins or `docs/` and the claims are about code in another repo): get that code with
 `bash ${CLAUDE_SKILL_DIR}/scripts/checkout-ref.sh "<project>" <repoName> <branch-or-sha>` (a separate worktree) and verify the statements against it; name that repo and sha in the summary.
 
 Severity rule (decides the vote, nothing else does):
-- **critical**: wrong behaviour, data loss, security/secret exposure, breaking API or contract change not declared, failing or missing tests for changed behaviour, build warnings/errors, unresolved critical threads from other reviewers that the diff does not address.
+- **critical**: wrong behaviour, data loss, security/secret exposure, breaking API or contract change not declared, missing tests for changed behaviour, a failed blocking pipeline on the current head (`builds[].status` `rejected` with `ranOnHead`), unresolved critical threads from other reviewers that the diff does not address.
 - **minor**: style, naming, description inaccuracies, missing comments, improvements that do not change correctness.
 - docs-only PR: a statement about runtime behaviour that the referenced code contradicts is critical; staleness, omissions and wording are minor.
 
@@ -91,7 +91,8 @@ End with a table: PR id, repository, state before, action taken, vote. Then one 
 ## Common mistakes
 
 - Reviewing from a changed-files list alone: it has no diff. Always `checkout-pr.sh`.
-- Trusting the PR description's test numbers: run the suites yourself and state what you ran. A test command that prints no pass/fail summary did not run, whatever its exit code.
+- Building or running tests locally: the pipeline does that. Report its result from `builds` and link it.
+- Calling a pipeline result current when `ranOnHead` is false or it is `expired`: say it ran on an older commit (or is still `queued`/`running`) instead.
 - Blocking on minor findings: minor never changes the vote.
 - Posting the summary before the inline threads, or without the `Reviewed <sha>` first line: the next pass will re-review from scratch.
 - Resolving other reviewers' threads, or replying to Copilot threads as if they were mine.
